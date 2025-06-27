@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skládání mapy Pixelie - Úniková hra</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #333;
+            color: #eee;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        #game-area {
+            position: relative; /* Důležité pro absolutní pozicování kousků */
+            width: 1250px; /* Šířka herní plochy, přizpůsob podle velikosti mapy */
+            height: 750px; /* Výška herní plochy */
+            border: 2px dashed #666;
+            background-color: #222;
+            box-shadow: 0 0 15px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            overflow: hidden; /* Aby kousky nepřetékaly mimo plochu, pokud by se posunuly */
+        }
+
+        .map-fragment {
+            position: absolute;
+            cursor: grab;
+            touch-action: none; /* Pro lepší fungování na dotykových zařízeních */
+            box-shadow: 0 0 5px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: transform 0.1s ease-out; /* Plynulejší otáčení */
+            width: 350px; /* Příklad: Nastav šířku fragmentu */
+            height: auto; /* Zajistí, že se výška přizpůsobí, aby obrázek nebyl zdeformovaný */
+        }
+
+        .map-fragment.dragging {
+            cursor: grabbing;
+            z-index: 1000; /* Přesune přetahovaný kousek nahoru */
+        }
+
+        #instructions {
+            margin-bottom: 20px;
+            text-align: center;
+            max-width: 700px;
+        }
+
+        #status-message {
+            margin-top: 10px;
+            font-weight: bold;
+            color: #88c0d0; /* Světle modrá */
+        }
+
+        #reset-button {
+            background-color: #bf616a; /* Červená */
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 1em;
+            margin-top: 20px;
+        }
+        #reset-button:hover {
+            background-color: #d08770; /* Světlejší červená */
+        }
+    </style>
+</head>
+<body>
+
+    <div id="instructions">
+        <h1>Složte mapu Pixelie!</h1>
+        <p>Hrdinové, Krystal stability je ukryt na tajném místě! Složte všechny fragmenty mapy Pixelie, abyste odhalili jeho polohu.</p>
+        <p>Pro přesun kousku mapy ho **klikněte a táhněte** myší. Pro **otočení kousku ho DVOJHLIKNĚTE**.</p>
+        <p>Hodně štěstí!</p>
+    </div>
+
+    <div id="game-area">
+    </div>
+
+    <div id="status-message"></div>
+    <button id="reset-button">Restartovat skládání</button>
+
+    <script>
+        const gameArea = document.getElementById('game-area');
+        const statusMessage = document.getElementById('status-message');
+        const resetButton = document.getElementById('reset-button');
+
+        // Seznam fragmentů mapy (cesty k obrázkům)
+        const fragments = [
+            'https://cdn.glitch.global/7ac99bc6-4811-4399-987a-2a6a2229af68/fragment1.png?v=1750682954158',
+            'https://cdn.glitch.global/7ac99bc6-4811-4399-987a-2a6a2229af68/fragment2.png?v=1750682957547',
+            'https://cdn.glitch.global/7ac99bc6-4811-4399-987a-2a6a2229af68/fragment3.png?v=1750682965580',
+            'https://cdn.glitch.global/7ac99bc6-4811-4399-987a-2a6a2229af68/fragment4.png?v=1750682973124',
+            'https://cdn.glitch.global/7ac99bc6-4811-4399-987a-2a6a2229af68/fragment5.png?v=1750682976983',
+            'https://cdn.glitch.global/7ac99bc6-4811-4399-987a-2a6a2229af68/fragment6.png?v=1750682983582',
+          'https://cdn.glitch.global/7ac99bc6-4811-4399-987a-2a6a2229af68/fragment7.png?v=1750682986696',
+          'https://cdn.glitch.global/7ac99bc6-4811-4399-987a-2a6a2229af68/fragment8.png?v=1750682991405',
+          'https://cdn.glitch.global/7ac99bc6-4811-4399-987a-2a6a2229af68/fragment9.png?v=1750683008224',
+          'https://cdn.glitch.global/7ac99bc6-4811-4399-987a-2a6a2229af68/fragment10.png?v=1750683010223',
+        ];
+
+        let activeFragment = null; // Aktuálně přetahovaný fragment
+        let xOffset = 0, yOffset = 0; // Posun fragmentu vzhledem k myši
+        let currentRotation = {}; // Objekt pro ukládání aktuální rotace každého fragmentu
+
+        // --- ZDE MUSÍŠ VLOŽIT HODNOTY, KTERÉ JSI ZÍSKALA Z PROHLÍŽEČE ---
+        const correctPositions = {
+    "fragment-0": {
+        "left": 91,
+        "top": 68,
+        "rotation": 0
+    },
+    "fragment-1": {
+        "left": 351,
+        "top": 66,
+        "rotation": 0
+    },
+    "fragment-2": {
+        "left": 653,
+        "top": 71,
+        "rotation": 0
+    },
+    "fragment-3": {
+        "left": 91,
+        "top": 276,
+        "rotation": 0
+    },
+    "fragment-4": {
+        "left": 36,
+        "top": 341,
+        "rotation": 0
+    },
+    "fragment-5": {
+        "left": 315,
+        "top": 315,
+        "rotation": 0
+    },
+    "fragment-6": {
+        "left": 412,
+        "top": 222,
+        "rotation": 0
+    },
+    "fragment-7": {
+        "left": 659,
+        "top": 204,
+        "rotation": 0
+    },
+    "fragment-8": {
+        "left": 528,
+        "top": 351,
+        "rotation": 0
+    },
+    "fragment-9": {
+        "left": 648,
+        "top": 368,
+        "rotation": 0
+    }
+};
+
+        const tolerance = 100; // Tolerance v pixelech pro kontrolu pozice (jak blízko musí být)
+        const rotationTolerance = 25; // Tolerance ve stupních pro kontrolu rotace
+
+        function initializeGame() {
+            gameArea.innerHTML = ''; // Vyčistí herní plochu
+            statusMessage.textContent = ''; // Vyčistí zprávu
+            currentRotation = {}; // Resetuje rotace
+            gameArea.dataset.completed = 'false'; // Resetuje stav dokončení hry při restartu
+            gameArea.style.border = "2px dashed #666"; // Vrátí původní okraj
+
+            fragments.forEach((src, index) => {
+                const img = document.createElement('img');
+                img.src = src;
+                img.classList.add('map-fragment');
+                img.id = `fragment-${index}`; // Každý fragment dostane unikátní ID
+
+                // Náhodná počáteční pozice a rotace
+                const randomX = Math.random() * (gameArea.clientWidth - 150); // -150 aby nebyly moc u okraje
+                const randomY = Math.random() * (gameArea.clientHeight - 150);
+                const randomRotation = Math.floor(Math.random() * 4) * 90; // 0, 90, 180, 270 stupňů
+                
+                img.style.left = `${randomX}px`;
+                img.style.top = `${randomY}px`;
+                img.style.transform = `rotate(${randomRotation}deg)`;
+                currentRotation[img.id] = randomRotation; // Uloží počáteční rotaci
+
+                gameArea.appendChild(img);
+
+                // Přidání posluchačů událostí pro drag-and-drop
+                img.addEventListener('mousedown', dragStart);
+                img.addEventListener('touchstart', dragStart); // Pro dotykové obrazovky
+
+                // Posluchač událostí pro dvojklik na otočení
+                img.addEventListener('dblclick', rotateFragment);
+                // Zabrání zobrazení kontextového menu na pravé tlačítko (jinak by se objevilo při dvojkliku)
+                img.addEventListener('contextmenu', (e) => e.preventDefault());
+            });
+        }
+
+        function dragStart(e) {
+            if (gameArea.dataset.completed === 'true') return; // Neumožní tahání, pokud je mapa složená
+            if (e.target.classList.contains('map-fragment')) {
+                activeFragment = e.target;
+                activeFragment.classList.add('dragging');
+
+                const style = window.getComputedStyle(activeFragment);
+                xOffset = parseInt(style.left, 10) - (e.clientX || e.touches[0].clientX);
+                yOffset = parseInt(style.top, 10) - (e.clientY || e.touches[0].clientY);
+
+                activeFragment.style.zIndex = '1000'; // Přesune aktivní fragment dopředu
+
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('touchmove', drag, { passive: false });
+                document.addEventListener('mouseup', dragEnd);
+                document.addEventListener('touchend', dragEnd);
+            }
+        }
+
+        function drag(e) {
+            if (!activeFragment || gameArea.dataset.completed === 'true') return;
+            e.preventDefault();
+
+            let clientX = e.clientX || e.touches[0].clientX;
+            let clientY = e.clientY || e.touches[0].clientY;
+
+            let newLeft = clientX + xOffset;
+            let newTop = clientY + yOffset;
+
+            newLeft = Math.max(0, Math.min(newLeft, gameArea.clientWidth - activeFragment.offsetWidth));
+            newTop = Math.max(0, Math.min(newTop, gameArea.clientHeight - activeFragment.offsetHeight));
+            
+            activeFragment.style.left = `${newLeft}px`;
+            activeFragment.style.top = `${newTop}px`;
+        }
+
+        function dragEnd() {
+            if (activeFragment) {
+                activeFragment.classList.remove('dragging');
+                activeFragment.style.zIndex = 'auto';
+                activeFragment = null;
+
+                document.removeEventListener('mousemove', drag);
+                document.removeEventListener('touchmove', drag);
+                document.removeEventListener('mouseup', dragEnd);
+                document.removeEventListener('touchend', dragEnd);
+
+                checkCompletion(); // Kontroluj po každém puštění fragmentu
+            }
+        }
+
+        function rotateFragment(e) {
+            if (gameArea.dataset.completed === 'true') return; // Neumožní otáčení, pokud je mapa složená
+            const fragment = e.target;
+            const fragmentId = fragment.id;
+            let currentDeg = currentRotation[fragmentId] || 0;
+            currentDeg = (currentDeg + 90) % 360;
+            fragment.style.transform = `rotate(${currentDeg}deg)`;
+            currentRotation[fragmentId] = currentDeg;
+            checkCompletion(); // Kontroluj po každé rotaci
+        }
+
+       function checkCompletion() {
+    let allCorrect = true;
+    for (let i = 0; i < fragments.length; i++) {
+        const id = `fragment-${i}`;
+        const fragment = document.getElementById(id);
+        if (!fragment) {
+            allCorrect = false;
+            break;
+        }
+
+        const currentLeft = parseInt(fragment.style.left, 10);
+        const currentTop = parseInt(fragment.style.top, 10);
+        const currentDeg = currentRotation[id];
+
+        const targetLeft = correctPositions[id].left;
+        const targetTop = correctPositions[id].top;
+        const targetRotation = correctPositions[id].rotation;
+
+        // Přidejte tyto console.log pro ladění:
+         console.log(`Fragment ${id}:`);
+         console.log(`  Current: L${currentLeft}, T${currentTop}, R${currentDeg}`);
+         console.log(`  Target:  L${targetLeft}, T${targetTop}, R${targetRotation}`);
+         console.log(`  Diff L: ${Math.abs(currentLeft - targetLeft)}, Diff T: ${Math.abs(currentTop - targetTop)}, Diff R: ${Math.abs(currentDeg - targetRotation) % 360}`);
+
+
+        // Kontrola pozice s tolerancí
+        if (
+            Math.abs(currentLeft - targetLeft) > tolerance ||
+            Math.abs(currentTop - targetTop) > tolerance
+        ) {
+            // console.log(`  FAIL: Position for ${id}`); // Pomůže identifikovat, který fragment je problém
+            allCorrect = false;
+            break;
+        }
+
+        // Kontrola rotace s tolerancí (zohledňuje 0 a 360 stupňů jako stejné)
+        const diffRotation = Math.abs(currentDeg - targetRotation) % 360;
+        if (diffRotation > rotationTolerance && Math.abs(diffRotation - 360) > rotationTolerance) {
+            // console.log(`  FAIL: Rotation for ${id}`); // Pomůže identifikovat, který fragment je problém
+            allCorrect = false;
+            break;
+        }
+    }
+
+    if (allCorrect) {
+        handleMapComplete();
+    } else {
+        if (gameArea.dataset.completed !== 'true') {
+            statusMessage.textContent = "Ještě ne tak úplně... pokračujte ve skládání.";
+        }
+    }
+}
+
+        function handleMapComplete() {
+            if (gameArea.dataset.completed === 'true') {
+                return;
+            }
+            gameArea.dataset.completed = 'true';
+
+            statusMessage.textContent = "Gratulujeme! Mapa je složena!";
+            gameArea.style.border = "2px solid #a3be8c"; // Zelený okraj
+
+            // --- ZDE SI VYBER JEDNU Z MOŽNOSTÍ, NEBO PŘIDEJ VLASTNÍ AKCI ---
+
+            // Příklad 1: Zobrazit hlášku s kódem (pro jednoduché testování)
+            alert('Gratulujeme! parádní, recept je složen!');
+
+            //Příklad 2: Přesměrovat na jinou stránku (odkomentuj a uprav URL, pokud chceš přesměrování)
+             window.location.href = 'https://view.genially.com/685aaaad918a34e9caa32ccc/presentation-konec-hry-pixelie'; 
+
+            // Příklad 3: Zobrazit skrytý element na stránce (pokud bys měla na stránce HTML element s ID "hidden-solution" a style="display: none;")
+            // const hiddenSolution = document.getElementById('hidden-solution');
+            // if (hiddenSolution) {
+            //     hiddenSolution.style.display = 'block';
+            //     // Volitelně zpráva pro hráče
+            //     statusMessage.textContent += " Tajemství odhaleno!";
+            // }
+
+            // Volitelně: Deaktivovat přetahování a otáčení po složení, aby se s mapou už nehýbalo
+            const fragmentsOnPage = gameArea.querySelectorAll('.map-fragment');
+            fragmentsOnPage.forEach(frag => {
+                frag.removeEventListener('mousedown', dragStart);
+                frag.removeEventListener('touchstart', dragStart);
+                frag.removeEventListener('dblclick', rotateFragment);
+                frag.style.cursor = 'default';
+            });
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('touchmove', drag);
+            document.removeEventListener('mouseup', dragEnd);
+            document.removeEventListener('touchend', dragEnd);
+        }
+
+        // Spustí hru při načtení stránky
+        initializeGame();
+
+        // Tlačítko pro restart
+        resetButton.addEventListener('click', initializeGame);
+
+    </script>
+</body>
+</html>
